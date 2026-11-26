@@ -110,6 +110,73 @@ def unnamed_lane(work: Path) -> None:
         raise SystemExit(f"second lane lost its title, got {lanes[1].get('name')!r}")
 
 
+def upward_edge_clears_boxes(work: Path) -> None:
+    """A return edge between two stacked nodes must not be drawn through either box."""
+    import re
+    spec = work / "upward.json"
+    spec.write_text(json.dumps({
+        "type": "swimlane", "title": "Upward edge",
+        "lanes": [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}],
+        "columns": [
+            {"lane": "a", "nodes": [{"id": "back", "title": "Return factor", "column": 1}]},
+            {"lane": "b", "nodes": [{"id": "verify", "title": "Verify", "column": 1}]},
+        ],
+        "edges": [{"from": "verify", "to": "back", "label": "return", "kind": "return", "dash": True}],
+    }), encoding="utf-8")
+    html = work / "upward.html"
+    run(PYTHON, str(ROOT / "scripts/diagram.py"), str(spec), "-o", str(html), "--check")
+    markup = html.read_text(encoding="utf-8")
+    boxes = [(float(m[1]), float(m[2]), float(m[1]) + float(m[3]), float(m[2]) + float(m[4]))
+             for m in re.finditer(r'class="node [^"]*" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', markup)]
+    path = re.search(r'<path class="edge"[^>]*\sd="([^"]+)"', markup)
+    if not path or len(boxes) < 2:
+        raise SystemExit("upward edge case did not render a node-to-node edge")
+    points: list[tuple[float, float]] = []
+    cursor = (0.0, 0.0)
+    for command, raw in re.findall(r'([MLHVZmlhvz])([^MLHVZmlhvz]*)', path.group(1)):
+        values = [float(value) for value in re.findall(r'-?\d+\.?\d*', raw)]
+        if command in "Mm":
+            for i in range(0, len(values) - 1, 2):
+                cursor = (values[i], values[i + 1])
+                points.append(cursor)
+        elif command in "Ll":
+            for i in range(0, len(values) - 1, 2):
+                cursor = (values[i], values[i + 1])
+                points.append(cursor)
+        elif command in "Hh":
+            for value in values:
+                cursor = (value, cursor[1])
+                points.append(cursor)
+        elif command in "Vv":
+            for value in values:
+                cursor = (cursor[0], value)
+                points.append(cursor)
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        for x0, y0, x1, y1 in boxes:
+            if abs(ay - by) < 0.5 and y0 + 2 < ay < y1 - 2 and min(ax, bx) < x1 - 2 and max(ax, bx) > x0 + 2:
+                raise SystemExit(f"upward edge runs through a node box at y={ay}")
+            if abs(ax - bx) < 0.5 and x0 + 2 < ax < x1 - 2 and min(ay, by) < y1 - 2 and max(ay, by) > y0 + 2:
+                raise SystemExit(f"upward edge runs through a node box at x={ax}")
+
+
+def clipping_edge_is_reported(work: Path) -> None:
+    """A route that cuts through an endpoint box must be reported by --check."""
+    spec = work / "clipping.json"
+    spec.write_text(json.dumps({
+        "type": "swimlane", "title": "Clipping route",
+        "lanes": [{"id": "a", "name": "A", "y": 0, "height": 700}],
+        "nodes": [
+            {"id": "top", "column": 0, "lane": "a", "title": "Top", "x": 100, "y": 100},
+            {"id": "low", "column": 0, "lane": "a", "title": "Low", "x": 100, "y": 400},
+        ],
+        "edges": [{"from": "low", "to": "top", "route": [[220, 400], [220, 130], [220, 100]]}],
+    }), encoding="utf-8")
+    result = subprocess.run([PYTHON, str(ROOT / "scripts/diagram.py"), str(spec), "-o", str(work / "clipping.html"), "--check"],
+                            text=True, capture_output=True)
+    if "edge-through-node" not in result.stdout:
+        raise SystemExit(f"a route through an endpoint box should be reported, got {result.stdout!r}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="diagram-roundtrip-") as directory:
         work = Path(directory)
@@ -123,6 +190,8 @@ def main() -> int:
         empty_spec(work)
         adjacent_blocks(work)
         unnamed_lane(work)
+        upward_edge_clears_boxes(work)
+        clipping_edge_is_reported(work)
     print("roundtrip: PASS")
     return 0
 

@@ -392,6 +392,14 @@ def route_score(layout: dict, edge: dict, points: list[tuple[float, float]]) -> 
         if along_top_bottom or along_left_right:
             score += 50000
     collisions = 0
+    for node_id in {edge.get("from"), edge.get("to")}:
+        node = positions.get(node_id)
+        if not node or node.get("kind") == "decision":
+            continue
+        inner = (node["x"] + 3, node["y"] + 3, node["x"] + node["width"] - 3, node["y"] + node["height"] - 3)
+        if any(segment_hits_box(p, q, inner) for p, q in zip(points, points[1:])):
+            collisions += 1
+            score += 200000
     for node_id, node in positions.items():
         if node_id in {edge.get("from"), edge.get("to")}:
             continue
@@ -407,15 +415,30 @@ def route_score(layout: dict, edge: dict, points: list[tuple[float, float]]) -> 
     return score, collisions
 
 
+def straight_clear(a: dict, b: dict, start: tuple[float, float], end: tuple[float, float]) -> bool:
+    """True when a single orthogonal segment connects the two borders without entering a box."""
+    if abs(start[0] - end[0]) > 0.5 and abs(start[1] - end[1]) > 0.5:
+        return False
+    for box in (a, b):
+        if box.get("kind") == "decision":
+            continue
+        inner = (box["x"] + 2, box["y"] + 2, box["x"] + box["width"] - 2, box["y"] + box["height"] - 2)
+        if segment_hits_box(start, end, inner):
+            return False
+    return True
+
+
 def auto_route(layout: dict, edge: dict) -> list[tuple[float, float]]:
     a, b = layout["positions"][edge["from"]], layout["positions"][edge["to"]]
     start, end = anchor(a, center(b)), anchor(b, center(a))
-    if abs(start[1] - end[1]) < 0.5 or abs(start[0] - end[0]) < 0.5:
+    if straight_clear(a, b, start, end):
         return [start, end]
     positions = layout["positions"]
     width, height = layout["width"], layout["height"]
-    x_channels = {(start[0] + end[0]) / 2, start[0], end[0], start[0] - 18, start[0] + 18, end[0] - 18, end[0] + 18}
-    y_channels = {(start[1] + end[1]) / 2, start[1], end[1], start[1] - 18, start[1] + 18, end[1] - 18, end[1] + 18}
+    # The endpoint coordinates themselves are not channels: a channel that equals
+    # start or end collapses the detour into a straight line through the endpoint box.
+    x_channels = {(start[0] + end[0]) / 2, start[0] - 18, start[0] + 18, end[0] - 18, end[0] + 18}
+    y_channels = {(start[1] + end[1]) / 2, start[1] - 18, start[1] + 18, end[1] - 18, end[1] + 18}
     for node in positions.values():
         x_channels.update((node["x"] - 18, node["x"] + node["width"] + 18))
         y_channels.update((node["y"] - 18, node["y"] + node["height"] + 18))
@@ -458,6 +481,16 @@ def route(layout: dict, edge: dict) -> list[tuple[float, float]]:
         mid = (start[1] + end[1]) / 2
         return [start, (start[0], mid), (end[0], mid), end]
     start, end = anchor(a, bc), anchor(b, ac)
+    if straight_clear(a, b, start, end):
+        return [start, end]
+    overlap = min(a["x"] + a["width"], b["x"] + b["width"]) - max(a["x"], b["x"])
+    if overlap > 2:
+        # The target sits above the source in the same column: a detour over the top
+        # would collapse into a vertical line through both boxes. Use a side channel.
+        right = max(a["x"] + a["width"], b["x"] + b["width"]) + 34
+        left = min(a["x"], b["x"]) - 34
+        channel_x = right if right <= layout["width"] - 12 or left < 12 else left
+        return [start, (channel_x, start[1]), (channel_x, end[1]), end]
     channel = min(a["y"], b["y"]) - 24
     return [start, (start[0], channel), (end[0], channel), end]
 
@@ -598,6 +631,10 @@ def check(layout: dict) -> list[str]:
         else:
             issues.append(message)
 
+    for lane in spec.get("lanes") or []:
+        if not str(lane.get("name") or "").strip():
+            quality_warnings.append(f"lane-unnamed: {lane.get('id')}")
+
     ids = list(positions)
     for i, left_id in enumerate(ids):
         left = positions[left_id]
@@ -639,6 +676,13 @@ def check(layout: dict) -> list[str]:
             if ((abs(p[1] - q[1]) < 0.5 and (abs(q[1] - target["y"]) < 1.5 or abs(q[1] - target["y"] - target["height"]) < 1.5)) or
                     (abs(p[0] - q[0]) < 0.5 and (abs(q[0] - target["x"]) < 1.5 or abs(q[0] - target["x"] - target["width"]) < 1.5))):
                 report(f"arrow-runs-along-target-border: {edge['from']} -> {edge['to']}", visual=True)
+        for endpoint in (edge["from"], edge["to"]):
+            node = positions[endpoint]
+            if node.get("kind") == "decision":
+                continue
+            inner = (node["x"] + 2, node["y"] + 2, node["x"] + node["width"] - 2, node["y"] + node["height"] - 2)
+            if any(segment_hits_box(p, q, inner) for p, q in zip(points, points[1:])):
+                report(f"edge-through-node: {edge['from']} -> {edge['to']} clips {endpoint}")
         for node_id, node in positions.items():
             if node_id in (edge["from"], edge["to"]):
                 continue
@@ -923,7 +967,8 @@ def main() -> int:
                 print("validation: FAIL")
                 print("\n".join(f"  - {issue}" for issue in sorted(set(issues))))
             else:
-                print(f"validation: PASS ({len(spec.get('participants', []))} participants, {len(spec.get('messages', []))} messages)" if spec.get("type") == "sequence" else f"validation: PASS ({len(spec.get('nodes', []))} nodes, {len(spec.get('edges', []))} edges)")
+                tail = f" with {len(warnings)} quality warning{'s' if len(warnings) != 1 else ''}" if warnings else ""
+                print(f"validation: PASS{tail} ({len(spec.get('participants', []))} participants, {len(spec.get('messages', []))} messages)" if spec.get("type") == "sequence" else f"validation: PASS{tail} ({len(spec.get('nodes', []))} nodes, {len(spec.get('edges', []))} edges)")
             for warning in warnings:
                 print(f"warning: {warning}")
         output = args.output or (args.png.with_suffix(".html") if args.png else None)

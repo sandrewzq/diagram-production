@@ -191,7 +191,7 @@ python3 scripts/check_update.py
 
 ## 自动校验
 
-每次渲染完自动跑，共 25 条规则，发现问题打印出来并把退出码设为 1。
+每次渲染完自动跑，共 27 条规则。硬伤让退出码变 1 并打印 FAIL；排版瑕疵只提示 warning，PASS 行会写明有几条。
 
 **通用几何**
 
@@ -200,6 +200,7 @@ python3 scripts/check_update.py
 | `node-overlap` | 两个节点框重叠 |
 | `edge-cross` | 连线穿过无关节点的框 |
 | `edge-too-close` | 连线离节点框不到 10 像素 |
+| `edge-through-node` | 连线从自己两端的节点框里穿过去 |
 | `label-overlap` | 两个标签互相压住 |
 | `label-out-of-viewbox` | 标签超出画布 |
 | `label-lane-boundary` | 标签压在泳道分隔线上 |
@@ -215,6 +216,7 @@ python3 scripts/check_update.py
 | 规则 | 拦什么 |
 | --- | --- |
 | `lane-overflow` | 节点超出所属泳道带 |
+| `lane-unnamed` | 泳道没有名字 |
 | `decision-without-path` | 判断节点没有出口 |
 | `decision-outcome-unlabeled` | 判断节点的出口没写结果标签 |
 

@@ -2,7 +2,7 @@
 name: diagram-production
 description: Create and revise source-grounded business and technical diagrams as structured data, then render and validate them as HTML/SVG. Use for process flows, swimlanes, system maps, architecture views, data flows, lifecycles, sequences, and overview diagrams.
 metadata:
-  version: 1.0.1
+  version: 1.0.2
   short-description: Generate validated diagrams from structured specs
 ---
 
@@ -42,7 +42,7 @@ For type selection and density decisions, read [references/diagram-types.md](ref
 3. Present the proposed lanes, nodes, and edges as a short text list before rendering when the user is still deciding the business meaning.
 4. Write or update the JSON spec. Use semantic IDs and columns; do not add pixel coordinates for a new diagram.
 5. Render with `scripts/diagram.py`.
-6. Run the same command with `--check`. Fix dangling edges, overlaps, lane overflow, connector crossings, decision branches, and text overflow before delivery.
+6. Run the same command with `--check`. Fix dangling edges, overlaps, lane overflow, connector crossings, decision branches, and text overflow before delivery. A `validation: PASS` line that mentions quality warnings is not a clean bill of health: hard defects exit 1, layout blemishes only warn, so read the warnings instead of shipping the first PASS. `edge-through-node` means an edge clips its own endpoint box; `lane-unnamed` means a lane lost its title.
 7. Inspect the rendered HTML at the target viewport. Check clipping, reading order, connector endpoints, and branch meaning.
 8. Deliver the generated artifact and retain the spec beside it for future edits.
 
@@ -99,6 +99,8 @@ This skill does not provide company-specific process knowledge, logos, internal 
 
 ## Sequence diagrams
 
-For interactions over time, use `type: sequence` with `participants`, `messages`, and optional `annotations`. Participants become top actor boxes with vertical lifelines. Messages are ordered by their list position, carry `from`, `to`, `label`, and an optional `kind` (`flow`, `request`, `response`, or `return`), and may preserve a reviewed legacy `label_at`. Run `--check` to catch overlapping participants, invalid message references, non-monotonic rows, endpoint drift, out-of-viewBox geometry, and annotation overflow. Existing actor/lifeline/message SVGs can be extracted with the same `extract_svg.py` workflow; malformed historical arrow polygons are reported as warnings rather than silently treated as business semantics.
+For interactions over time, use `type: sequence` with `participants`, `messages`, and optional `annotations`. Participants become top actor boxes with vertical lifelines. Messages are ordered by their list position, carry `from`, `to`, `label`, and an optional `kind` (`flow`, `request`, `response`, or `return`), and may preserve a reviewed legacy `label_at`.
+
+Run `--check` to catch overlapping participants, invalid message references, non-monotonic rows, endpoint drift, out-of-viewBox geometry, and annotation overflow. Existing actor/lifeline/message SVGs can be extracted with the same `extract_svg.py` workflow; malformed historical arrow polygons are reported as warnings rather than silently treated as business semantics.
 
 A spec that defines no diagram elements is reported as a warning and exits with code 2 instead of passing silently. An annotation without coordinates is placed after its associated message row. The sequence checker rejects annotation boxes that cover participant boxes. When extraction recognizes no diagram elements, it writes `type: unknown`, records and prints an incomplete-extraction warning, and exits with code 2, so a source that uses only unclassified inline SVG is not mistaken for a successful reverse engineering result.
