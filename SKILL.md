@@ -2,7 +2,7 @@
 name: diagram-production
 description: Create and revise source-grounded business and technical diagrams as structured data, then render and validate them as HTML/SVG. Use for process flows, swimlanes, system maps, architecture views, data flows, lifecycles, sequences, and overview diagrams.
 metadata:
-  version: 1.0.2
+  version: 1.0.3
   short-description: Generate validated diagrams from structured specs
 ---
 

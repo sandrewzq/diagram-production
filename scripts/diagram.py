@@ -317,12 +317,111 @@ def center(box: dict) -> tuple[float, float]:
     return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
 
-def anchor(box: dict, target: tuple[float, float]) -> tuple[float, float]:
+PORT_SIDES = ("top", "right", "bottom", "left")
+
+
+def port_points(box: dict) -> dict[str, tuple[float, float]]:
+    """The four mid-edge ports of a box; a decision diamond has its vertices at the same spots."""
+    cx, cy = center(box)
+    return {
+        "top": (cx, box["y"]),
+        "right": (box["x"] + box["width"], cy),
+        "bottom": (cx, box["y"] + box["height"]),
+        "left": (box["x"], cy),
+    }
+
+
+def anchor_side(box: dict, target: tuple[float, float]) -> str:
     cx, cy = center(box)
     tx, ty = target
     if abs(tx - cx) >= abs(ty - cy):
-        return (box["x"] + box["width"], cy) if tx >= cx else (box["x"], cy)
-    return (cx, box["y"] + box["height"]) if ty >= cy else (cx, box["y"])
+        return "right" if tx >= cx else "left"
+    return "bottom" if ty >= cy else "top"
+
+
+def anchor(box: dict, target: tuple[float, float]) -> tuple[float, float]:
+    return port_points(box)[anchor_side(box, target)]
+
+
+def anchor_candidates(box: dict, target: tuple[float, float]) -> list[tuple[str, tuple[float, float]]]:
+    """The preferred port first, then the rest ordered by how well they face the target."""
+    points = port_points(box)
+    preferred = anchor_side(box, target)
+    cx, cy = center(box)
+    dx, dy = target[0] - cx, target[1] - cy
+    facing = {"right": dx, "left": -dx, "bottom": dy, "top": -dy}
+    rest = sorted((side for side in PORT_SIDES if side != preferred), key=lambda side: -facing[side])
+    return [(side, points[side]) for side in [preferred] + rest]
+
+
+def port_side_of(box: dict, point: tuple[float, float]) -> str | None:
+    """Which port a routed endpoint sits on, so a hand-written route still reserves its port."""
+    best: tuple[float, str] | None = None
+    for side, (px, py) in port_points(box).items():
+        distance = math.hypot(point[0] - px, point[1] - py)
+        if best is None or distance < best[0]:
+            best = (distance, side)
+    return best[1] if best and best[0] <= 1.0 else None
+
+
+def pick_port(box: dict, target: tuple[float, float], used: dict[str, set[str]], direction: str) -> str:
+    """Prefer the port that faces the target, but keep in-edges and out-edges apart.
+
+    Several arrows may meet at one port (a fan-in reads fine); what does not read is an
+    arrow leaving from the exact point another arrow enters, because the two first
+    segments overlap and the later line looks like it starts in mid-air.
+    """
+    opposite = "out" if direction == "in" else "in"
+    for side, _ in anchor_candidates(box, target):
+        if opposite not in used.setdefault(side, set()):
+            used[side].add(direction)
+            return side
+    preferred = anchor_side(box, target)
+    used.setdefault(preferred, set()).add(direction)
+    return preferred
+
+
+def port_plan(layout: dict) -> dict[int, tuple[str, str]]:
+    """Give every edge its own port on each endpoint so two edges never share an arrowhead.
+
+    Edges with a hand-written route keep the ports their route already uses; the rest are
+    assigned in spec order, so an earlier edge keeps the natural anchor and a later edge
+    steps aside. Without this a request arrow into a node's top and a return arrow out of
+    the same top overlap for the first ~18px and the return looks like it starts mid-air.
+    """
+    cached = layout.get("_port_plan")
+    if cached is not None:
+        return cached
+    positions = layout["positions"]
+    edges = layout["spec"].get("edges", [])
+    used: dict[str, dict[str, set[str]]] = {}
+    plan: dict[int, tuple[str, str]] = {}
+    for edge in edges:
+        points = edge.get("route")
+        if not points:
+            continue
+        source = positions.get(edge["from"])
+        target = positions.get(edge["to"])
+        if source and len(points) >= 1:
+            side = port_side_of(source, (float(points[0][0]), float(points[0][1])))
+            if side:
+                used.setdefault(edge["from"], {}).setdefault(side, set()).add("out")
+        if target and len(points) >= 2:
+            side = port_side_of(target, (float(points[-1][0]), float(points[-1][1])))
+            if side:
+                used.setdefault(edge["to"], {}).setdefault(side, set()).add("in")
+    for edge in edges:
+        if edge.get("route"):
+            continue
+        source = positions.get(edge["from"])
+        target = positions.get(edge["to"])
+        if not source or not target:
+            continue
+        start_side = pick_port(source, center(target), used.setdefault(edge["from"], {}), "out")
+        end_side = pick_port(target, center(source), used.setdefault(edge["to"], {}), "in")
+        plan[id(edge)] = (start_side, end_side)
+    layout["_port_plan"] = plan
+    return plan
 
 
 def simplify_route(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -428,9 +527,10 @@ def straight_clear(a: dict, b: dict, start: tuple[float, float], end: tuple[floa
     return True
 
 
-def auto_route(layout: dict, edge: dict) -> list[tuple[float, float]]:
+def auto_route(layout: dict, edge: dict, start: tuple[float, float] | None = None, end: tuple[float, float] | None = None) -> list[tuple[float, float]]:
     a, b = layout["positions"][edge["from"]], layout["positions"][edge["to"]]
-    start, end = anchor(a, center(b)), anchor(b, center(a))
+    if start is None or end is None:
+        start, end = anchor(a, center(b)), anchor(b, center(a))
     if straight_clear(a, b, start, end):
         return [start, end]
     positions = layout["positions"]
@@ -461,38 +561,37 @@ def auto_route(layout: dict, edge: dict) -> list[tuple[float, float]]:
 def route(layout: dict, edge: dict) -> list[tuple[float, float]]:
     if edge.get("route"):
         return [tuple(map(float, point)) for point in edge["route"]]
-    if not layout.get("fixed") and not layout["spec"].get("_legacy_swimlane"):
-        return auto_route(layout, edge)
     a, b = layout["positions"][edge["from"]], layout["positions"][edge["to"]]
     ac, bc = center(a), center(b)
-    if b["x"] > a["x"] + a["width"] + 2:
+    sides = port_plan(layout).get(id(edge))
+    if sides:
+        start, end = port_points(a)[sides[0]], port_points(b)[sides[1]]
+    else:
         start, end = anchor(a, bc), anchor(b, ac)
-        if abs(start[1] - end[1]) < 0.5:
-            return [start, end]
-        mid = (start[0] + end[0]) / 2
-        return [start, (mid, start[1]), (mid, end[1]), end]
-    if b["x"] < a["x"] - 2:
-        start, end = anchor(a, bc), anchor(b, ac)
-        gap_left, gap_right = b["x"] + b["width"], a["x"]
-        channel = (gap_left + gap_right) / 2 if gap_left < gap_right else max(a["x"] + a["width"], b["x"] + b["width"]) + 34
-        return [start, (channel, start[1]), (channel, end[1]), end]
-    if b["y"] >= a["y"] + a["height"]:
-        start, end = anchor(a, bc), anchor(b, ac)
-        mid = (start[1] + end[1]) / 2
-        return [start, (start[0], mid), (end[0], mid), end]
-    start, end = anchor(a, bc), anchor(b, ac)
+    if not layout.get("fixed") and not layout["spec"].get("_legacy_swimlane"):
+        return auto_route(layout, edge, start, end)
     if straight_clear(a, b, start, end):
         return [start, end]
-    overlap = min(a["x"] + a["width"], b["x"] + b["width"]) - max(a["x"], b["x"])
-    if overlap > 2:
-        # The target sits above the source in the same column: a detour over the top
-        # would collapse into a vertical line through both boxes. Use a side channel.
-        right = max(a["x"] + a["width"], b["x"] + b["width"]) + 34
-        left = min(a["x"], b["x"]) - 34
-        channel_x = right if right <= layout["width"] - 12 or left < 12 else left
-        return [start, (channel_x, start[1]), (channel_x, end[1]), end]
-    channel = min(a["y"], b["y"]) - 24
-    return [start, (start[0], channel), (end[0], channel), end]
+    start_side, end_side = sides if sides else (anchor_side(a, bc), anchor_side(b, ac))
+    vertical_start = start_side in ("top", "bottom")
+    vertical_end = end_side in ("top", "bottom")
+    if vertical_start and vertical_end:
+        mid = (start[1] + end[1]) / 2
+        return [start, (start[0], mid), (end[0], mid), end]
+    if not vertical_start and not vertical_end:
+        if b["x"] < a["x"] - 2:
+            gap_left, gap_right = b["x"] + b["width"], a["x"]
+            channel = (gap_left + gap_right) / 2 if gap_left < gap_right else max(a["x"] + a["width"], b["x"] + b["width"]) + 34
+        else:
+            channel = (start[0] + end[0]) / 2
+        return [start, (channel, start[1]), (channel, end[1]), end]
+    # One port is horizontal and the other vertical: turn once, and arrive perpendicular
+    # to the port border so the last segment never runs along the target outline.
+    if vertical_end:
+        corner = (end[0], start[1])
+    else:
+        corner = (start[0], end[1])
+    return [start, corner, end]
 
 def segment_hits_box(p: tuple[float, float], q: tuple[float, float], box: tuple[float, float, float, float]) -> bool:
     x0, y0, x1, y1 = box
@@ -656,6 +755,7 @@ def check(layout: dict) -> list[str]:
                 inner = node["width"] - (8 if node.get("_legacy_compat") and field in {"meta", "tag"} else 12 if node.get("_legacy_compat") and field == "sub" else 16 if node.get("_legacy_compat") and field == "title" else 18)
                 if not fixed_geometry and text_width(line, size, bold) > inner:
                     issues.append(f"text-overflow: {node_id}.{field}")
+    port_claims: dict[tuple[str, tuple[float, float]], str] = {}
     for edge in spec.get("edges", []):
         if edge.get("from") not in positions or edge.get("to") not in positions:
             continue
@@ -692,6 +792,14 @@ def check(layout: dict) -> list[str]:
             clearance = min((segment_rect_distance(points[i], points[i + 1], expanded_box(node, 0)) for i in range(len(points) - 1)), default=float("inf"))
             if clearance < 10:
                 report(f"edge-too-close: {edge['from']} -> {edge['to']} near {node_id}", visual=True)
+        # An arrow leaving from the exact point another arrow enters overlaps for its first
+        # segment, so the later line looks like it starts in mid-air.
+        for node_id, point, direction in ((edge["from"], points[0], "out"), (edge["to"], points[-1], "in")):
+            other = port_claims.get((node_id, point))
+            if other and other != direction:
+                side = port_side_of(positions[node_id], point) or "border"
+                report(f"port-shared: {node_id}.{side} takes both an in and an out arrow", visual=True)
+            port_claims[(node_id, point)] = direction
         if edge.get("label"):
             lx, ly = edge_label_position(layout, edge, points)
             label_rect = label_box(str(edge["label"]), lx, ly)

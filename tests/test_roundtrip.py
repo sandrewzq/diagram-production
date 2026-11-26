@@ -177,6 +177,41 @@ def clipping_edge_is_reported(work: Path) -> None:
         raise SystemExit(f"a route through an endpoint box should be reported, got {result.stdout!r}")
 
 
+def shared_port_is_avoided(work: Path) -> None:
+    """An out-edge must not leave from the port another edge enters, or the heads overlap."""
+    import re
+    spec = work / "shared-port.json"
+    spec.write_text(json.dumps({
+        "type": "swimlane", "title": "Shared port",
+        "lanes": [{"id": "lanes", "name": "Upper", "y": 0, "height": 900},
+                  {"id": "low", "name": "Lower", "y": 900, "height": 300}],
+        "columns": [{"nodes": [
+            {"id": "relay", "lane": "lanes", "title": "Relay", "x": 901, "y": 760, "width": 190, "height": 78},
+            {"id": "factor", "lane": "low", "title": "Return factor", "x": 901, "y": 960, "width": 190, "height": 78},
+            {"id": "gen", "lane": "lanes", "title": "Generate", "x": 1265, "y": 352, "width": 190, "height": 78},
+        ]}],
+        "edges": [
+            {"from": "relay", "to": "factor", "label": "return"},
+            {"from": "factor", "to": "gen", "label": "factor", "dash": True},
+        ],
+    }), encoding="utf-8")
+    html = work / "shared-port.html"
+    run(PYTHON, str(ROOT / "scripts/diagram.py"), str(spec), "-o", str(html), "--check")
+    markup = html.read_text(encoding="utf-8")
+    starts = []
+    for path_data in re.findall(r'<path class="edge"[^>]*\sd="([^"]+)"', markup):
+        first = re.match(r"M ([\d.]+) ([\d.]+)", path_data)
+        last = re.findall(r"(-?\d+\.?\d*) (-?\d+\.?\d*)", path_data)[-1]
+        starts.append(((float(first.group(1)), float(first.group(2))), (float(last[0]), float(last[1]))))
+    if len(starts) < 2:
+        raise SystemExit("shared port case did not render two edges")
+    (in_start, in_end), (out_start, out_end) = starts
+    if in_end == out_start:
+        raise SystemExit(f"the out-edge still departs from the port the in-edge enters: {out_start}")
+    if out_start[0] < 1090.5 or out_start[1] < 998.5 or out_start[1] > 999.5:
+        raise SystemExit(f"the out-edge should take the right port (1091, 999), got {out_start}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="diagram-roundtrip-") as directory:
         work = Path(directory)
@@ -192,6 +227,7 @@ def main() -> int:
         unnamed_lane(work)
         upward_edge_clears_boxes(work)
         clipping_edge_is_reported(work)
+        shared_port_is_avoided(work)
     print("roundtrip: PASS")
     return 0
 
