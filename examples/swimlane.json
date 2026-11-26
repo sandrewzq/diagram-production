@@ -1,0 +1,21 @@
+{
+  "type": "swimlane",
+  "title": "Request review flow",
+  "subtitle": "A generic example with a return path.",
+  "lanes": [
+    {"id": "requester", "name": "Requester", "sub": "Prepare and submit", "style": "yc"},
+    {"id": "service", "name": "Service", "sub": "Validate and record", "style": "pf"}
+  ],
+  "nodes": [
+    {"id": "prepare", "lane": "requester", "column": 0, "kind": "actor", "title": "Prepare request", "sub": "Provide information"},
+    {"id": "validate", "lane": "service", "column": 1, "kind": "decision", "title": "Valid?", "sub": "Required fields"},
+    {"id": "complete", "lane": "service", "column": 2, "kind": "state", "title": "Complete", "sub": "Record result"},
+    {"id": "revise", "lane": "requester", "column": 2, "kind": "actor", "title": "Revise request", "sub": "Fix missing data"}
+  ],
+  "edges": [
+    {"from": "prepare", "to": "validate", "kind": "flow"},
+    {"from": "validate", "to": "complete", "label": "yes", "kind": "flow"},
+    {"from": "validate", "to": "revise", "label": "no", "kind": "return"},
+    {"from": "revise", "to": "validate", "kind": "return"}
+  ]
+}

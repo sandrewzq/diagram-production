@@ -1,0 +1,14 @@
+{
+  "type": "lifecycle",
+  "title": "Generic item lifecycle",
+  "subtitle": "State transitions and the trigger for each transition.",
+  "nodes": [
+    {"id": "draft", "column": 0, "kind": "state", "title": "Draft", "sub": "Editable"},
+    {"id": "active", "column": 1, "kind": "state", "title": "Active", "sub": "In use"},
+    {"id": "closed", "column": 2, "kind": "state", "title": "Closed", "sub": "No further changes"}
+  ],
+  "edges": [
+    {"from": "draft", "to": "active", "label": "approve", "kind": "flow"},
+    {"from": "active", "to": "closed", "label": "close", "kind": "flow"}
+  ]
+}

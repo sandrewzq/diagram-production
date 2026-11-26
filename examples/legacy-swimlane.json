@@ -1,0 +1,22 @@
+{
+  "number": "1",
+  "title": "Legacy-compatible review flow",
+  "subtitle": "The former swimlane spec shape remains accepted.",
+  "figure_meta": "Requester → Service → External reviewer",
+  "lanes": [
+    {"id": "yc", "name": "Requester", "sub": "Prepare and submit"},
+    {"id": "pf", "name": "Service", "sub": "Review and record"},
+    {"id": "ext", "name": "External reviewer", "sub": "Provide feedback"}
+  ],
+  "columns": [
+    {"stage": "Prepare", "nodes": [{"id": "draft", "lane": "yc", "title": "Prepare request", "sub": "Provide information", "tag": "Action"}]},
+    {"stage": "Review", "nodes": [{"id": "review", "lane": "pf", "title": "Review request", "sub": "Check required fields", "meta": "Approval step", "tag": "Record"}]},
+    {"stage": "Feedback", "nodes": [{"id": "feedback", "lane": "ext", "title": "Provide feedback", "sub": "Return comments", "tag": "External"}]},
+    {"stage": "Complete", "nodes": [{"id": "complete", "lane": "pf", "title": "Record result", "sub": "Close the request", "tag": "Record"}]}
+  ],
+  "edges": [
+    {"from": "draft", "to": "review"},
+    {"from": "review", "to": "feedback"},
+    {"from": "feedback", "to": "complete"}
+  ]
+}

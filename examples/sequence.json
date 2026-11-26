@@ -1,0 +1,19 @@
+{
+  "type": "sequence",
+  "title": "Generic request sequence",
+  "subtitle": "A compact interaction between a caller, service, and data store.",
+  "participants": [
+    {"id": "caller", "title": "Caller", "cls": "hm"},
+    {"id": "service", "title": "Service", "cls": "pf"},
+    {"id": "store", "title": "Data store", "cls": "ext"}
+  ],
+  "messages": [
+    {"from": "caller", "to": "service", "label": "Request"},
+    {"from": "service", "to": "store", "label": "Read data"},
+    {"from": "store", "to": "service", "label": "Result", "kind": "response"},
+    {"from": "service", "to": "caller", "label": "Response", "kind": "response"}
+  ],
+  "annotations": [
+    {"text": "The response carries the stored result."}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "type": "data-flow",
+  "title": "Generic data flow",
+  "subtitle": "A source is transformed, stored, and delivered to a consumer.",
+  "nodes": [
+    {"id": "source", "column": 0, "kind": "external", "title": "Source", "sub": "Originates data"},
+    {"id": "transform", "column": 1, "kind": "process", "title": "Transform", "sub": "Validate and normalize"},
+    {"id": "store", "column": 2, "kind": "data", "title": "Data store", "sub": "Retain records"},
+    {"id": "consumer", "column": 3, "kind": "actor", "title": "Consumer", "sub": "Uses the result"}
+  ],
+  "edges": [
+    {"from": "source", "to": "transform", "label": "raw data", "kind": "external"},
+    {"from": "transform", "to": "store", "label": "normalized", "kind": "flow"},
+    {"from": "store", "to": "consumer", "label": "query", "kind": "response"}
+  ],
+  "legend": [
+    {"label": "external exchange", "color": "#7c3aed"},
+    {"label": "response or return", "color": "#2563eb"}
+  ]
+}

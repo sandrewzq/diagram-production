@@ -1,0 +1,16 @@
+{
+  "type": "system-map",
+  "title": "Generic service relationship",
+  "subtitle": "Systems and data directions are explicit.",
+  "nodes": [
+    {"id": "client", "column": 0, "kind": "actor", "title": "Client", "sub": "User or caller"},
+    {"id": "app", "column": 1, "kind": "system", "title": "Application", "sub": "Business logic"},
+    {"id": "store", "column": 2, "kind": "system", "title": "Data store", "sub": "Persisted records"},
+    {"id": "partner", "column": 2, "kind": "external", "title": "External service", "sub": "Optional integration"}
+  ],
+  "edges": [
+    {"from": "client", "to": "app", "label": "request", "kind": "flow"},
+    {"from": "app", "to": "store", "label": "read / write", "kind": "dependency"},
+    {"from": "app", "to": "partner", "label": "API call", "kind": "external"}
+  ]
+}

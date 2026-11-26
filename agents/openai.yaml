@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagram Production"
+  short_description: "Create validated business and technical diagrams"
+  default_prompt: "Use $diagram-production to model, render, validate, or reverse-engineer this diagram from a structured spec."
