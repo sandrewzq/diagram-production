@@ -223,8 +223,10 @@ def extract_svg(svg: str, title: str = "Extracted diagram", metadata: dict | Non
         lane_id = re.sub(r"[^A-Za-z0-9_-]", "", attr(tag, "data-lane", "")) or style or f"lane{len(lanes) + 1}"
         y, height = float(attr(tag, "y", 0)), float(attr(tag, "height", 0))
         following = svg[match.end():match.end() + 1200]
-        lanes.append({"id": lane_id, "name": text_in(following, ("lane-title", "lane-label")),
-                      "sub": text_in(following, ("lane-sub",)), "style": style, "_y": y, "_height": height,
+        stop = re.search(r'<(?:rect|polygon|path)\b', following)
+        head = following[:stop.start()] if stop else following
+        lanes.append({"id": lane_id, "name": text_in(head, ("lane-title", "lane-label")),
+                      "sub": text_in(head, ("lane-sub",)), "style": style, "_y": y, "_height": height,
                       "_x": float(attr(tag, "x", 0))})
 
     def lane_for(y: float) -> str | None:
@@ -284,7 +286,9 @@ def extract_svg(svg: str, title: str = "Extracted diagram", metadata: dict | Non
             continue
         xs, ys = values[0::2], values[1::2]
         x, y, width, height = min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
-        block = svg[match.end():match.end() + 800]
+        following = svg[match.end():match.end() + 800]
+        stop = re.search(r'<(?:rect|polygon|path)\b', following)
+        block = following[:stop.start()] if stop else following
         decision = {"x": x, "y": y, "width": width, "height": height, "w": width, "h": height,
                     "lane": lane_for(y + height / 2), "kind": "decision",
                     "title": text_in(block, ("decision-title", "node-title")),

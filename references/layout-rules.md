@@ -8,6 +8,7 @@ The renderer uses semantic columns and optional lanes. Keep the data model stabl
 - Keep labels short enough to scan. Move rationale, source citations, and uncertainty to `meta`, `tag`, or a note outside the main path.
 - Use a decision only when the outgoing alternatives matter. Label every outgoing decision edge.
 - Use an explicit `route` only for a deliberate exception or a legacy reconstruction. New diagrams should rely on automatic routing.
+- Where the facing sides share a clear path, align their ports and enter the target perpendicularly on one line. Keep decision ports at the diamond's tips. For an obstructed path, give the last turn enough room to read clearly.
 - If a diagram has too many crossings or more than one dominant direction, split it into focused views.
 
 The checker catches common geometric failures, but it cannot determine whether the business meaning is correct. Review the semantic inventory before treating a diagram as complete.

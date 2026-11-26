@@ -340,6 +340,24 @@ def simplify_route(points: list[tuple[float, float]]) -> list[tuple[float, float
     return result
 
 
+def has_short_approach_dogleg(points: list[tuple[float, float]], *, max_offset: float = 20) -> bool:
+    """Detect a small sideways jog between parallel legs just before the arrow."""
+    if len(points) < 4:
+        return False
+    start, bend, turn, tip = points[-4:]
+    if math.dist(bend, turn) > max_offset or math.dist(turn, tip) > 30:
+        return False
+    for axis in (0, 1):
+        sideways = 1 - axis
+        if (abs(start[sideways] - bend[sideways]) < 0.5
+                and abs(bend[axis] - turn[axis]) < 0.5
+                and abs(bend[sideways] - turn[sideways]) >= 0.5
+                and abs(turn[sideways] - tip[sideways]) < 0.5
+                and (bend[axis] - start[axis]) * (tip[axis] - turn[axis]) > 0):
+            return True
+    return False
+
+
 def segment_rect_distance(p: tuple[float, float], q: tuple[float, float], box: tuple[float, float, float, float]) -> float:
     """Distance for the axis-aligned segments emitted by the renderer."""
     x0, y0, x1, y1 = box
@@ -615,6 +633,8 @@ def check(layout: dict) -> list[str]:
             approach = math.hypot(q[0] - p[0], q[1] - p[1])
             if approach < 12:
                 report(f"arrow-short-approach: {edge['from']} -> {edge['to']}", visual=True)
+            if has_short_approach_dogleg(points):
+                report(f"arrow-short-dogleg: {edge['from']} -> {edge['to']}", visual=True)
             # An arrow that travels along the target border reads as if it is pressing into the box.
             if ((abs(p[1] - q[1]) < 0.5 and (abs(q[1] - target["y"]) < 1.5 or abs(q[1] - target["y"] - target["height"]) < 1.5)) or
                     (abs(p[0] - q[0]) < 0.5 and (abs(q[0] - target["x"]) < 1.5 or abs(q[0] - target["x"] - target["width"]) < 1.5))):

@@ -13,4 +13,6 @@ Before delivering a diagram:
 9. The primary path is readable in one direction.
 10. The rendered artifact is inspected at the target viewport for clipping and ambiguous endpoints.
 
+The `arrow-short-dogleg` check flags a sideways jog of up to 20 SVG units between parallel legs traveling in the same direction when the final leg is at most 30 units. It checks explicit routes as well as automatically routed edges. Legacy imports report it as a visual warning for review.
+
 The bundled checker is intentionally conservative. A clean check is necessary but does not prove business semantics; review the source-grounded node and edge list as well. For a legacy diagram, use `extract_svg.py` followed by `verify_render.py` to catch structural drift.

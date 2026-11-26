@@ -59,8 +59,9 @@ python3 scripts/diagram.py examples/swimlane.json -o build/swimlane.html --png b
 # 3. 只校验，不写文件
 python3 scripts/diagram.py examples/swimlane.json --check
 
-# 4. 跑回归测试（6 份示例往返 + 异常输入）
+# 4. 跑回归测试（6 份示例往返 + 异常输入 + 版本检查）
 python3 tests/test_roundtrip.py
+python3 tests/test_update.py
 ```
 
 命令参数：
@@ -75,6 +76,35 @@ python3 tests/test_roundtrip.py
 
 ---
 
+## 版本与更新
+
+仓库发新版本时，本机会知道，但**不会自己动任何东西**。
+
+```bash
+python3 scripts/check_update.py
+```
+
+- 当前是最新版：**什么都不打印**，退出码 0。
+- 上游有新版本：打印三行——新版本号、Release 链接、一条 `git pull --ff-only` 命令。是否执行由你决定。
+- 同一个新版本只提示一次，之后静默，除非加 `--always`。
+
+机制：
+
+| 项 | 做法 |
+| --- | --- |
+| 本地版本 | 读 `SKILL.md` 里的 `metadata.version` |
+| 远端版本 | GitHub 的 latest release，取不到就退到最新 tag |
+| 缓存 | `~/.cache/diagram-production/update-check.json`，24 小时有效 |
+| 网络失败 | 静默返回 0，不重试、不报错、不阻塞画图 |
+| 缓存过期 + 联网失败 | 静默。过期的版本信息不当成事实 |
+| 完全关闭 | 环境变量 `DIAGRAM_PRODUCTION_NO_UPDATE_CHECK=1` |
+
+可选参数：`--quiet`（只更新缓存不打印）、`--always`（忽略"已提示过"）、`--ttl=秒`（改缓存有效期）、`--repo=OWNER/NAME`（换检查的仓库）。
+
+给 agent 用的时候，这一节写在 `SKILL.md` 最前面：每次会话第一次画图前跑一次 `check_update.py`，有输出就转述给用户，然后**继续干活**，不等确认。
+
+---
+
 ## 数据格式
 
 ### 泳道图 / 流程图 / 系统关系图等
@@ -85,8 +115,8 @@ python3 tests/test_roundtrip.py
   "title": "示例审批流",
   "subtitle": "一句话说明这张图讲什么",
   "lanes": [
-    {"id": "people", "name": "业务方", "sub": "发起与确认", "style": "yc"},
-    {"id": "platform", "name": "平台", "sub": "系统处理", "style": "pf"}
+    {"id": "people", "name": "业务方", "sub": "发起与确认", "style": "people"},
+    {"id": "platform", "name": "平台", "sub": "系统处理", "style": "platform"}
   ],
   "nodes": [
     {"id": "submit", "lane": "people", "column": 0, "kind": "actor", "title": "提交申请", "sub": "补齐必填信息"},
@@ -161,7 +191,7 @@ python3 tests/test_roundtrip.py
 
 ## 自动校验
 
-每次渲染完自动跑，共 24 条规则，发现问题打印出来并把退出码设为 1。
+每次渲染完自动跑，共 25 条规则，发现问题打印出来并把退出码设为 1。
 
 **通用几何**
 
@@ -176,6 +206,7 @@ python3 tests/test_roundtrip.py
 | `arrow-off-border` | 箭头落点不在目标节点边框上 |
 | `arrow-runs-along-target-border` | 箭头沿着目标边框走，看起来像在挤压节点 |
 | `arrow-short-approach` | 箭头最后一段短于 12 像素，指向不明 |
+| `arrow-short-dogleg` | 箭头前一格里有个不到 20 像素的横向侧移，最后一段又不超过 30 像素，看起来像抖了一下 |
 | `text-overflow` | 单个不可断的词宽过节点内宽 |
 | `text-too-dense` | 折行数超过该位置上限，节点被撑高 |
 
@@ -258,6 +289,7 @@ scripts/
   diagram.py                 渲染 + 校验（主入口）
   extract_svg.py             从已有 HTML/SVG 反解出 JSON
   verify_render.py           比对两张图的结构
+  check_update.py            查上游有没有新版本（只读，不动文件）
 examples/                    6 份可直接运行的示例
 references/
   diagram-types.md           怎么选图类型
@@ -265,7 +297,9 @@ references/
   layout-rules.md            布局约定
   quality-gates.md           交付前的检查清单
   legacy-svg.md              旧格式判定规则
-tests/test_roundtrip.py      回归测试
+tests/
+  test_roundtrip.py          渲染 → 反解 → 重渲染的一致性回归
+  test_update.py             版本检查（离线运行，不联网）
 ```
 
 ---

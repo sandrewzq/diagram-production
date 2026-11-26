@@ -3,8 +3,8 @@
   "title": "Request review flow",
   "subtitle": "A generic example with a return path.",
   "lanes": [
-    {"id": "requester", "name": "Requester", "sub": "Prepare and submit", "style": "yc"},
-    {"id": "service", "name": "Service", "sub": "Validate and record", "style": "pf"}
+    {"id": "requester", "name": "Requester", "sub": "Prepare and submit", "style": "people"},
+    {"id": "service", "name": "Service", "sub": "Validate and record", "style": "platform"}
   ],
   "nodes": [
     {"id": "prepare", "lane": "requester", "column": 0, "kind": "actor", "title": "Prepare request", "sub": "Provide information"},

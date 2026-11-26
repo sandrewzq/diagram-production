@@ -2,12 +2,23 @@
 name: diagram-production
 description: Create and revise source-grounded business and technical diagrams as structured data, then render and validate them as HTML/SVG. Use for process flows, swimlanes, system maps, architecture views, data flows, lifecycles, sequences, and overview diagrams.
 metadata:
+  version: 1.0.1
   short-description: Generate validated diagrams from structured specs
 ---
 
 # Diagram production
 
 Use this skill when the user needs a diagram that must remain editable, reproducible, and consistent across revisions. The skill is domain-neutral: do not assume a company, product, workflow, brand, or internal system. It is the single entry point for process flows, swimlanes, system maps, architecture views, data flows, lifecycles, sequences, and overview diagrams. It fully replaces the former swimlane-only workflow, including its legacy spec and CLI compatibility.
+
+## Check for updates once per session
+
+Before the first render of a session, run:
+
+~~~bash
+python3 scripts/check_update.py
+~~~
+
+It prints nothing when this copy is current, and one short block when the upstream repository publishes a newer release. Relay that block to the user as information and carry on with the task in the same turn; the check never installs, pulls, or edits anything. Do not retry a failed check, do not block the task on it, and do not run it again in the same session — the result is cached for 24 hours. Set `DIAGRAM_PRODUCTION_NO_UPDATE_CHECK=1` for a copy that must never reach the network.
 
 ## Source of truth
 
