@@ -51,17 +51,16 @@
 
 ## 快速开始
 
+默认交付自包含的 HTML 和可编辑的 JSON。用户明确要求截图或 PNG 时，再用 `--png` 导出图片。检查版式所用的临时截图放在交付目录之外。
+
 ```bash
 # 1. 画一张泳道图，同时跑校验
 python3 scripts/diagram.py examples/swimlane.json -o build/swimlane.html --check
 
-# 2. 顺手导一张 PNG
-python3 scripts/diagram.py examples/swimlane.json -o build/swimlane.html --png build/swimlane.png
-
-# 3. 只校验，不写文件
+# 2. 只校验，不写文件
 python3 scripts/diagram.py examples/swimlane.json --check
 
-# 4. 跑回归测试（6 份示例往返 + 异常输入 + 版本检查）
+# 3. 跑回归测试（6 份示例往返 + 异常输入 + 版本检查）
 python3 tests/test_roundtrip.py
 python3 tests/test_update.py
 ```
@@ -72,7 +71,7 @@ python3 tests/test_update.py
 | --- | --- |
 | `spec` | 输入的 JSON 文件（必填） |
 | `-o` / `--output` / `--out` | 输出的 HTML 路径；不写且带 `--png` 时按 PNG 文件名推导 |
-| `--png` | 额外导出一张 PNG |
+| `--png` | 用户明确要求截图或 PNG 时使用，额外导出图片 |
 | `--check` | 只校验，有问题退出码 1 |
 | `-q` / `--quiet` | 不打印过程信息 |
 

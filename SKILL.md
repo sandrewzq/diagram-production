@@ -2,7 +2,7 @@
 name: diagram-production
 description: Create and revise source-grounded business and technical diagrams as structured data, then render and validate them as HTML/SVG. Use for process flows, swimlanes, system maps, architecture views, data flows, lifecycles, sequences, and overview diagrams.
 metadata:
-  version: 1.0.3
+  version: 1.0.4
   short-description: Generate validated diagrams from structured specs
 ---
 
@@ -43,8 +43,8 @@ For type selection and density decisions, read [references/diagram-types.md](ref
 4. Write or update the JSON spec. Use semantic IDs and columns; do not add pixel coordinates for a new diagram.
 5. Render with `scripts/diagram.py`.
 6. Run the same command with `--check`. Fix dangling edges, overlaps, lane overflow, connector crossings, decision branches, and text overflow before delivery. A `validation: PASS` line that mentions quality warnings is not a clean bill of health: hard defects exit 1, layout blemishes only warn, so read the warnings instead of shipping the first PASS. `edge-through-node` means an edge clips its own endpoint box; `lane-unnamed` means a lane lost its title.
-7. Inspect the rendered HTML at the target viewport. Check clipping, reading order, connector endpoints, and branch meaning.
-8. Deliver the generated artifact and retain the spec beside it for future edits.
+7. Inspect the rendered HTML at the target viewport. Check clipping, reading order, connector endpoints, and branch meaning. Keep any screenshots used for inspection outside the deliverable directory.
+8. Deliver the HTML with its editable JSON spec. Export a PNG when the user explicitly requests a screenshot or PNG.
 
 ## Existing HTML or SVG
 
@@ -73,17 +73,16 @@ Extraction preserves visible labels, their `label_at` coordinates, approximate l
 
 ## Output
 
-The renderer produces a self-contained HTML file with inline SVG and CSS. The HTML is the portable source for browser preview and can be embedded into a larger report. PNG export is optional and must not replace the JSON spec or HTML source.
+Keep the self-contained HTML and editable JSON together as the default deliverables. The HTML includes inline SVG and CSS for browser preview or embedding.
 
 Run:
 
 ~~~bash
 python3 scripts/diagram.py examples/swimlane.json -o build/swimlane.html --check
 python3 scripts/diagram.py examples/system-map.json -o build/system-map.html --check
-python3 scripts/diagram.py examples/swimlane.json -o build/swimlane.html --png build/swimlane.png --check
 ~~~
 
-`--png` is the only optional dependency: it drives a Chromium-family browser in headless mode. The renderer looks for `CHROME_BIN`, then `google-chrome`, `chromium`, `chrome`, `msedge`, or `brave-browser` on `PATH`, then the usual install paths on macOS, Linux, and Windows. When no browser is found it writes the HTML, skips the PNG, and exits 2 with a message naming `CHROME_BIN`. Everything else needs only Python 3.9+ and the standard library.
+When the user explicitly requests a screenshot or PNG, add `--png build/swimlane.png` to the render command. PNG export uses a headless Chromium-family browser and checks `CHROME_BIN`, `PATH`, and standard install paths. Ordinary rendering and validation use Python 3.9+ and the standard library.
 
 ## Compatibility with legacy swimlane specs
 
