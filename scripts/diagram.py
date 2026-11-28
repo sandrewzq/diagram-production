@@ -527,6 +527,13 @@ def straight_clear(a: dict, b: dict, start: tuple[float, float], end: tuple[floa
     return True
 
 
+def x_route_channels(layout: dict, start_x: float, end_x: float) -> list[float]:
+    channels = {(start_x + end_x) / 2, start_x - 18, start_x + 18, end_x - 18, end_x + 18}
+    for node in layout["positions"].values():
+        channels.update((node["x"] - 18, node["x"] + node["width"] + 18))
+    return sorted(x for x in channels if 12 <= x <= layout["width"] - 12)
+
+
 def auto_route(layout: dict, edge: dict, start: tuple[float, float] | None = None, end: tuple[float, float] | None = None) -> list[tuple[float, float]]:
     a, b = layout["positions"][edge["from"]], layout["positions"][edge["to"]]
     if start is None or end is None:
@@ -534,19 +541,16 @@ def auto_route(layout: dict, edge: dict, start: tuple[float, float] | None = Non
     if straight_clear(a, b, start, end):
         return [start, end]
     positions = layout["positions"]
-    width, height = layout["width"], layout["height"]
+    height = layout["height"]
     # The endpoint coordinates themselves are not channels: a channel that equals
     # start or end collapses the detour into a straight line through the endpoint box.
-    x_channels = {(start[0] + end[0]) / 2, start[0] - 18, start[0] + 18, end[0] - 18, end[0] + 18}
     y_channels = {(start[1] + end[1]) / 2, start[1] - 18, start[1] + 18, end[1] - 18, end[1] + 18}
     for node in positions.values():
-        x_channels.update((node["x"] - 18, node["x"] + node["width"] + 18))
         y_channels.update((node["y"] - 18, node["y"] + node["height"] + 18))
     candidates: list[list[tuple[float, float]]] = []
     # A channel outside the node columns is safer than a diagonal or a route through a box.
-    for channel in sorted(x_channels):
-        if 12 <= channel <= width - 12:
-            candidates.append(simplify_route([start, (channel, start[1]), (channel, end[1]), end]))
+    for channel in x_route_channels(layout, start[0], end[0]):
+        candidates.append(simplify_route([start, (channel, start[1]), (channel, end[1]), end]))
     for channel in sorted(y_channels):
         if 12 <= channel <= height - 12:
             candidates.append(simplify_route([start, (start[0], channel), (end[0], channel), end]))
@@ -556,6 +560,68 @@ def auto_route(layout: dict, edge: dict, start: tuple[float, float] | None = Non
     mid_y = (start[1] + end[1]) / 2
     candidates.append(simplify_route([start, (start[0], mid_y), (end[0], mid_y), end]))
     return min(candidates, key=lambda candidate: route_score(layout, edge, candidate))
+
+
+def edge_style(layout: dict, edge: dict) -> tuple[str, str, str]:
+    kind = edge.get("kind", "flow")
+    positions = layout["positions"]
+    if edge.get("ext") or any(positions[edge[end]].get("lane") == "ext" for end in ("from", "to")):
+        kind = "external"
+    elif edge.get("dash"):
+        kind = "return"
+    color, dash, marker = EDGE_STYLE.get(kind, EDGE_STYLE["flow"])
+    return edge.get("color", color), dash, marker
+
+
+def branch_routes(layout: dict) -> dict[int, list[tuple[float, float]]]:
+    """Choose one turn for compatible outgoing edges when each branch has clearance."""
+    cached = layout.get("_branch_routes")
+    if cached is not None:
+        return cached
+    positions = layout["positions"]
+    ports = port_plan(layout)
+    groups = {}
+    for edge in layout["spec"].get("edges", []):
+        sides = ports.get(id(edge))
+        if sides not in (("right", "left"), ("left", "right")) or edge.get("label"):
+            continue
+        source, target = positions[edge["from"]], positions[edge["to"]]
+        color, dash, marker = edge_style(layout, edge)
+        if dash or source["lane"] != target["lane"]:
+            continue
+        start, end = port_points(source)[sides[0]], port_points(target)[sides[1]]
+        # An aligned target already has a straight path through any valid fork.
+        if abs(start[1] - end[1]) < 0.5 or (end[0] > start[0]) != (sides[0] == "right"):
+            continue
+        group = (edge["from"], sides[0], target["column"], str(color), marker)
+        groups.setdefault(group, []).append((edge, start, end))
+
+    routes = {}
+    for branches in groups.values():
+        if len(branches) < 2:
+            continue
+        independent = [auto_route(layout, edge, start, end) for edge, start, end in branches]
+        # A common turn should not sacrifice an individual branch's clearance.
+        scores = [route_score(layout, edge, points)[0]
+                  for (edge, _, _), points in zip(branches, independent)]
+        start_x = branches[0][1][0]
+        nearest_end_x = min((end[0] for _, _, end in branches), key=lambda x: abs(x - start_x))
+        left, right = sorted((start_x, nearest_end_x))
+        for channel in x_route_channels(layout, start_x, nearest_end_x):
+            if not left + 12 <= channel <= right - 12:
+                continue
+            candidates = [[start, (channel, start[1]), (channel, end[1]), end]
+                          for _, start, end in branches]
+            for (edge, _, _), points, baseline in zip(branches, candidates, scores):
+                score, collisions = route_score(layout, edge, points)
+                if collisions or score > baseline + 1e-6 or has_short_approach_dogleg(points):
+                    break
+            else:
+                independent = candidates
+                break
+        routes.update((id(edge), points) for (edge, _, _), points in zip(branches, independent))
+    layout["_branch_routes"] = routes
+    return routes
 
 
 def route(layout: dict, edge: dict) -> list[tuple[float, float]]:
@@ -569,7 +635,8 @@ def route(layout: dict, edge: dict) -> list[tuple[float, float]]:
     else:
         start, end = anchor(a, bc), anchor(b, ac)
     if not layout.get("fixed") and not layout["spec"].get("_legacy_swimlane"):
-        return auto_route(layout, edge, start, end)
+        planned = branch_routes(layout).get(id(edge))
+        return planned if planned is not None else auto_route(layout, edge, start, end)
     if straight_clear(a, b, start, end):
         return [start, end]
     start_side, end_side = sides if sides else (anchor_side(a, bc), anchor_side(b, ac))
@@ -902,17 +969,11 @@ def svg(layout: dict) -> str:
         if edge.get("from") not in positions or edge.get("to") not in positions:
             continue
         points = route(layout, edge)
-        edge_kind = edge.get("kind", "flow")
-        if edge.get("ext") or positions[edge["from"]].get("lane") == "ext" or positions[edge["to"]].get("lane") == "ext":
-            edge_kind = "external"
-        elif edge.get("dash"):
-            edge_kind = "return"
-        color, dash, marker = EDGE_STYLE.get(edge_kind, EDGE_STYLE["flow"])
+        color, dash, marker = edge_style(layout, edge)
         path = f'M {points[0][0]:.1f} {points[0][1]:.1f}'
         for p, q in zip(points, points[1:]):
             path += f' H {q[0]:.1f}' if abs(p[1] - q[1]) < 0.5 else f' V {q[1]:.1f}'
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        color = edge.get("color", color)
         out.append(f'<path class="edge" d="{path}" fill="none" stroke="{esc(color)}" stroke-width="2.2"{dash_attr} marker-end="url(#{marker})"/>')
         if edge.get("label"):
             lx, ly = edge_label_position(layout, edge, points)

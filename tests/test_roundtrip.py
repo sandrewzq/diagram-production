@@ -212,6 +212,35 @@ def shared_port_is_avoided(work: Path) -> None:
         raise SystemExit(f"the out-edge should take the right port (1091, 999), got {out_start}")
 
 
+def outgoing_branches_share_a_fork(work: Path) -> None:
+    """Choose a clear common turn when independent routing splits a fan-out."""
+    import re
+    spec = work / "fan-out.json"
+    spec.write_text(json.dumps({
+        "type": "architecture", "title": "Nested items",
+        "nodes": [
+            {"id": node_id, "column": column, "width": 285, "height": 56}
+            for node_id, column in [
+                ("parent-a", 0), ("parent-b", 0), ("item-a", 1), ("item-b", 1), ("item-c", 1)
+            ]
+        ],
+        "edges": [
+            {"from": "parent-a", "to": "item-a"},
+            {"from": "parent-b", "to": "item-b"},
+            {"from": "parent-b", "to": "item-c"},
+        ],
+    }), encoding="utf-8")
+    output = work / "fan-out.html"
+    run(PYTHON, str(ROOT / "scripts/diagram.py"), str(spec), "-o", str(output), "--check")
+    paths = re.findall(r'<path class="edge" d="([^"]+)"', output.read_text(encoding="utf-8"))
+    if len(paths) != 3:
+        raise SystemExit(f"expected three edges, got {paths}")
+    forks = [re.fullmatch(r"M ([\d.]+) ([\d.]+) H ([\d.]+) V ([\d.]+) H ([\d.]+)", path)
+             for path in paths[1:]]
+    if any(fork is None for fork in forks) or forks[0].groups()[:3] != forks[1].groups()[:3]:
+        raise SystemExit(f"the two branches must share the same turn: {paths[1:]}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="diagram-roundtrip-") as directory:
         work = Path(directory)
@@ -228,6 +257,7 @@ def main() -> int:
         upward_edge_clears_boxes(work)
         clipping_edge_is_reported(work)
         shared_port_is_avoided(work)
+        outgoing_branches_share_a_fork(work)
     print("roundtrip: PASS")
     return 0
 
